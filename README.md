@@ -29,7 +29,7 @@ Below is a grid of interface screenshots (3 per row, uniform size):
 
 <table style="width:100%; table-layout: fixed;">
   <tr>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/1.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/7.png" style="width:100%;" /></td>
     <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/2.png" style="width:100%;" /></td>
     <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/3.png" style="width:100%;" /></td>
   </tr>
