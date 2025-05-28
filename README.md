@@ -1,3 +1,4 @@
+<img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/1.png" style="width:32%;" />
 # Resonant - OSINT AI Assistant
 
 **AI-driven OSINT assistant.**
