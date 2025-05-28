@@ -24,11 +24,20 @@
 
 ## Screenshots
 
-All images are the same display size (width=800px).
+Below is a grid of interface screenshots (3 per row, uniform size):
 
-|                                      Landing Page & Core Module                                      |                                          Authentication Flow                                         |                                           Query Submission                                           |                                          Real-Time Analysis                                          |                                         Investigation Summary                                        |
-| :--------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------: |
-| <img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/1.png" width="100%" /> | <img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/2.png" width="100%" /> | <img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/3.png" width="100%" /> | <img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/4.png" width="100%" /> | <img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/5.png" width="100%" /> |
+<table style="width:100%; table-layout: fixed;">
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/1.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/2.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/3.png" style="width:100%;" /></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/4.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/5.png" style="width:100%;" /></td>
+    <td></td>
+  </tr>
+</table>
 
 ---
 
@@ -85,19 +94,8 @@ Access the UI at `http://localhost:5000`.
 
 ---
 
-## Contributing
-
-1. Fork this repo.
-2. Create a branch: `git checkout -b feature/your-feature`.
-3. Commit: `git commit -m "Add feature"`.
-4. Push: `git push origin feature/your-feature`.
-5. Open a Pull Request.
-
----
-
 ## License
 
 MIT License © 2025 `TMRSWRR`
 
 > **Disclaimer:** Use responsibly and within legal and ethical guidelines. All data is sourced from publicly available channels.
-
