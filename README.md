@@ -35,6 +35,7 @@ Below is a grid of interface screenshots (3 per row, uniform size):
   <tr>
     <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/4.png" style="width:100%;" /></td>
     <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/5.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/6.png" style="width:100%;" /></td>
     <td></td>
   </tr>
 </table>
