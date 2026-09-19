@@ -247,7 +247,7 @@ def create_app(config_name='default'):
         from email_intel import EMAIL_RE, gather_email_intel, format_email_report
         if EMAIL_RE.match(user_message.strip()):
             try:
-                return format_email_report(gather_email_intel(user_message.strip()))
+                return format_email_report(gather_email_intel(user_message.strip(), deep=True))
             except Exception as e:
                 app.logger.warning(f"Email report failed, falling back to the agent: {e}")
 

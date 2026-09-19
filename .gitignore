@@ -10,3 +10,4 @@ logs/
 migrations/__pycache__/
 *.log
 .DS_Store
+.cache/

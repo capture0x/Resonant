@@ -152,6 +152,15 @@ def _src_pgp(email):
         return "error", f"HTTP {r.status_code}"
     return "ok", {"public_key_published": True, "key_bytes": len(r.text)}
 
+def _src_web_mentions(email):
+    """Where the exact address appears on the open web (search engine)."""
+    from duckduckgo_search import DDGS
+    hits = DDGS().text(f'"{email}"', max_results=8) or []
+    items = [{"title": (h.get("title") or "")[:120], "url": h.get("href"), "snippet": (h.get("body") or "")[:180]}
+             for h in hits if h.get("href")]
+    return ("ok", items) if items else ("not_found", None)
+
+
 def _gh_headers():
     h = dict(_HTTP_HEADERS, Accept="application/vnd.github+json")
     if os.getenv("GITHUB_TOKEN"):
@@ -237,7 +246,7 @@ def _src_hunter(email):
     d = r.json().get("data", {})
     return "ok", {k: d.get(k) for k in ("status", "result", "score", "disposable", "webmail", "accept_all") if k in d}
 
-def gather_email_intel(email):
+def gather_email_intel(email, deep=False):
     """Free-first email OSINT. Runs every source concurrently and returns a
     structured report: address analysis, domain/mail-provider analysis,
     identity signals (Gravatar, PGP, GitHub), breach exposure, plus a
@@ -260,6 +269,7 @@ def gather_email_intel(email):
         "pgp_keyserver": lambda: _src_pgp(email),
         "github": lambda: _src_github(email),
         "breaches_xposedornot": lambda: _src_breaches(email),
+        "web_mentions": lambda: _src_web_mentions(email),
         "breaches_hibp": lambda: _src_hibp(email),
         "hunter_verification": lambda: _src_hunter(email),
     }
@@ -308,6 +318,11 @@ def gather_email_intel(email):
     result["sources"] = {n: s for n, (s, _) in outcomes.items()}
     result["source_notes"] = {n: d for n, (s, d) in outcomes.items() if s in ("error", "skipped")}
     result["summary"] = _summarize(result)
+    if data_of("web_mentions"):
+        result["web_mentions"] = data_of("web_mentions")
+
+    if deep:
+        _pivot_usernames(result)
     return result
 
 def _merged_breaches(result):
@@ -321,6 +336,39 @@ def _merged_breaches(result):
             if key not in merged or len(b) > len(merged[key]):
                 merged[key] = b
     return sorted(merged.values(), key=lambda x: str(x.get("year") or ""))
+
+
+def _pivot_usernames(result, max_usernames=3):
+    """Scans the usernames tied to this address by a verified link (GitHub
+    account matched through the address, Gravatar profile) across public
+    profile pages. A profile using the same handle is a lead, not proof it
+    is the same person, and the report says so."""
+    from wmn import scan_username
+
+    names = []
+    for u in result["summary"]["usernames"]:
+        if u["value"] and u["value"].lower() not in [n.lower() for n in names]:
+            names.append(u["value"])
+    names = names[:max_usernames]
+    pivots, lock = {}, threading.Lock()
+
+    def run(name):
+        try:
+            found, stats = scan_username(name)
+            # Gravatar and GitHub are already reported as accounts above.
+            found = [f for f in found if f["site"].lower() not in ("gravatar", "github")]
+        except Exception as e:
+            found, stats = [], {"error": str(e)[:100]}
+        with lock:
+            pivots[name] = {"profiles": found, "stats": stats}
+
+    threads = [threading.Thread(target=run, args=(n,), daemon=True) for n in names]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=40)
+    result["username_pivots"] = pivots
+    result["summary"]["counts"]["same_username_profiles"] = sum(len(p["profiles"]) for p in pivots.values())
 
 
 def _summarize(result):
@@ -384,8 +432,12 @@ def format_email_report(data):
     summ = data.get("summary") or _summarize(data)
     c = summ["counts"]
     out = [f"## Email Intelligence: `{email}`", ""]
-    out += ["| Accounts | Breaches | Usernames | Pictures | Links |", "|:--:|:--:|:--:|:--:|:--:|",
-            f"| {c['accounts']} | {c['breaches']} | {c['usernames']} | {c['pictures']} | {c['links']} |", ""]
+    head = ["Accounts", "Breaches", "Usernames", "Pictures", "Links"]
+    vals = [c["accounts"], c["breaches"], c["usernames"], c["pictures"], c["links"]]
+    if "same_username_profiles" in c:
+        head.append("Same-username profiles")
+        vals.append(c["same_username_profiles"])
+    out += ["| " + " | ".join(head) + " |", "|" + ":--:|" * len(head), "| " + " | ".join(str(v) for v in vals) + " |", ""]
 
     def section(title, rows):
         if rows:
@@ -422,11 +474,34 @@ def format_email_report(data):
     for a in summ["accounts"]:
         d = a.get("details") or {}
         extra = ", ".join(f"{k}: {d[k]}" for k in ("followers", "following", "public_repos", "created_at") if k in d)
+        about = "; ".join(f"{k}: {_md_escape(d[k])}" for k in ("name", "company", "location", "blog", "bio") if d.get(k))
         who = f" `{a['username']}`" if a.get("username") else ""
         link = f" — <{a['url']}>" if a.get("url") else ""
-        rows.append(f"- **{a['service']}**{who}{link}" + (f"  \n  {extra}" if extra else "")
+        rows.append(f"- **{a['service']}**{who}{link}" + (f"  \n  {about}" if about else "") + (f"  \n  {extra}" if extra else "")
                     + (f"  \n  linked by: {d['linked_by']}" if d.get("linked_by") else ""))
     section(f"Registered Accounts ({len(rows)} found)", rows)
+
+    pivots = data.get("username_pivots") or {}
+    for uname, info in pivots.items():
+        profs = info.get("profiles") or []
+        if not profs:
+            out += [f"### Public Profiles Using `{uname}`", "No public profiles found on the sites checked.", ""]
+            continue
+        by_cat = {}
+        for p in profs:
+            by_cat.setdefault(p["category"], []).append(f"[{_md_escape(p['site'])}]({p['url']})")
+        checked = info.get("stats", {}).get("checked")
+        out += [f"### Public Profiles Using `{uname}` ({len(profs)} found)",
+                f"_Same handle on other sites; it may belong to different people, so treat each as a lead to verify. Checked {checked} sites._", ""]
+        out += [f"- **{cat}**: " + ", ".join(links) for cat, links in sorted(by_cat.items())]
+        out.append("")
+
+    wm = data.get("web_mentions") or []
+    if wm:
+        out += ["### Web Mentions", "_Pages where this exact address appears in search results._", ""]
+        for h in wm:
+            out.append(f"- [{_md_escape(h['title'] or h['url'])}]({h['url']})" + (f"  \n  {_md_escape(h['snippet'])}" if h.get("snippet") else ""))
+        out.append("")
 
     gh = (data.get("identity_signals") or {}).get("github") if isinstance(data.get("identity_signals"), dict) else None
     if gh and gh.get("commits_authored_total"):

@@ -19,6 +19,7 @@ Resonant is a self-hosted web application that pairs a tool-using AI agent with 
 - [Usage](#usage)
 - [Troubleshooting](#troubleshooting)
 - [Security & Ethical Use](#security--ethical-use)
+- [Acknowledgements](#acknowledgements)
 - [License](#license)
 
 ---
@@ -47,6 +48,7 @@ Sending just a username is enough: Resonant runs its lookups in parallel and wri
   * Social profile lookups (Twitter, Instagram, GitHub)
   * YouTube metadata & comment retrieval
   * Image analysis via `image_vision`
+* **Same-Username Profile Scan**: Usernames tied to an address by a verified link (GitHub account, Gravatar profile) are checked across roughly 580 public profile pages using the [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) project's site list. Results are labelled as leads, since the same handle can belong to different people. Adult and dating sites are excluded, and nothing logs in, signs up or triggers password-reset flows.
 * **Instant Email Reports**: Send just an email address and get a structured report straight from the open-source lookups (summary counts, names, usernames, profile pictures, links, a detailed breach table with source, year, record count and exposed data types, linked GitHub accounts, mail infrastructure) with no AI provider involved, so it is fast and nothing in it can be invented. Follow-up questions go to the agent, which can see the report.
 * **Automatic Deep Recon**: Send just a username, email, domain or IP address and Resonant runs every relevant lookup in parallel, then writes a report from the real results, instead of relying on the model to pick enough tools on its own.
 * **Reliable Multi-Tool Lookups**: Tool output (page content, search results) is automatically capped and truncated so a lookup chaining several tools together stays within what free AI providers can accept, instead of failing on oversized requests.
@@ -187,6 +189,12 @@ Resonant only surfaces information that is already publicly accessible through t
 Email and breach lookups involve personal data. Breach results list only the names of breaches an address appeared in (never passwords), but you should still use them only for authorized research, such as checking your own or a client's exposure, and handle the results in line with data-protection laws such as GDPR and KVKK.
 
 You are responsible for using this tool in compliance with the terms of service of any third-party platform you query, and with the laws and regulations applicable in your jurisdiction. Use it only for legitimate, authorized OSINT research.
+
+---
+
+## Acknowledgements
+
+The username scan uses the site list from [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) by Micah Hoffman and contributors, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The list is downloaded at runtime and cached locally, not bundled in this repository.
 
 ---
 
