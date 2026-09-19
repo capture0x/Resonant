@@ -58,7 +58,7 @@ class RateLimiter:
 limiter = RateLimiter()
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 LOGIN_MAX_FAILURES, LOGIN_WINDOW = 5, 15 * 60
-REGISTER_MAX, REGISTER_WINDOW = 5, 60 * 60
+REGISTER_MAX, REGISTER_WINDOW = int(os.getenv("REGISTER_MAX_PER_HOUR", "10")), 60 * 60
 AI_MESSAGES_PER_HOUR = int(os.getenv("AI_MESSAGES_PER_HOUR", "30"))
 
 
@@ -142,7 +142,6 @@ def create_app(config_name='default'):
             if limiter.blocked(f'register:{ip}', REGISTER_MAX, REGISTER_WINDOW):
                 flash('Too many sign-ups from this address. Try again later.')
                 return render_template('register.html'), 429
-            limiter.hit(f'register:{ip}', REGISTER_WINDOW)
 
             username = (request.form.get('username') or '').strip()
             password = request.form.get('password') or ''
@@ -168,6 +167,9 @@ def create_app(config_name='default'):
             )
             db.session.add(new_user)
             db.session.commit()
+            # Only successful sign-ups count toward the limit: validation
+            # mistakes don't create accounts, so they shouldn't lock people out.
+            limiter.hit(f'register:{ip}', REGISTER_WINDOW)
             app.logger.info(f'New user registered: {username}')
             return redirect(url_for('login'))
 

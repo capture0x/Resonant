@@ -155,6 +155,7 @@ Environment variables are loaded from `.env` (see `.env.example`):
 | `HOST` / `PORT` | Bind address and port (default `127.0.0.1` / `5000`)       |
 | `SESSION_COOKIE_SECURE` | `true` when served over HTTPS                      |
 | `AI_MESSAGES_PER_HOUR` | Per-user cap on AI messages (default `30`)          |
+| `REGISTER_MAX_PER_HOUR` | New accounts allowed per IP per hour (default `10`) |
 | `GITHUB_TOKEN`  | Optional. Raises GitHub API rate limits for email/profile lookups |
 | `HIBP_API_KEY`  | Optional. Enables Have I Been Pwned breach lookups         |
 | `HUNTER_API_KEY`| Optional. Enables Hunter.io email verification             |
