@@ -40,7 +40,7 @@ Sending just a username is enough: Resonant runs its lookups in parallel and wri
   * DuckDuckGo search (text, images, videos, news)
   * Web crawling & main-content extraction
   * Username enumeration across GitHub, GitLab, npm, Docker Hub, About.me, Keybase and Telegram (only platforms whose "not found" response can be reliably told apart from a real profile are included, to avoid silent false positives)
-  * Email intelligence: format validation, MX record check, Gravatar lookup
+  * Email intelligence: alias analysis (Gmail dots / `+tags`), mail provider detection from MX, SPF/DMARC, disposable-address check, Gravatar profile (name, verified linked accounts), PGP key lookup, GitHub profile and commit-author matches, and data-breach exposure (XposedOrNot; Have I Been Pwned and Hunter.io when you add API keys). Every source reports its own status, so a failed or skipped source is never mistaken for "nothing found"
   * Domain intelligence: WHOIS, DNS records (A/MX/NS/TXT), subdomain discovery via certificate transparency logs
   * IP intelligence: geolocation, ISP and ASN
   * Image metadata (EXIF) extraction
@@ -147,6 +147,9 @@ Environment variables are loaded from `.env` (see `.env.example`):
 | `SECRET_KEY`    | Flask session signing key — use a long random value       |
 | `DATABASE_URL`  | PostgreSQL connection string                               |
 | `REDIS_URL`     | Reserved for future use                                    |
+| `GITHUB_TOKEN`  | Optional. Raises GitHub API rate limits for email/profile lookups |
+| `HIBP_API_KEY`  | Optional. Enables Have I Been Pwned breach lookups         |
+| `HUNTER_API_KEY`| Optional. Enables Hunter.io email verification             |
 
 ---
 
@@ -170,6 +173,8 @@ Environment variables are loaded from `.env` (see `.env.example`):
 ## Security & Ethical Use
 
 Resonant only surfaces information that is already publicly accessible through the platforms and search engines it queries (DuckDuckGo, public GitHub API, public web pages). It performs no authentication bypass, scraping of private/gated content, or automated account access.
+
+Email and breach lookups involve personal data. Breach results list only the names of breaches an address appeared in (never passwords), but you should still use them only for authorized research, such as checking your own or a client's exposure, and handle the results in line with data-protection laws such as GDPR and KVKK.
 
 You are responsible for using this tool in compliance with the terms of service of any third-party platform you query, and with the laws and regulations applicable in your jurisdiction. Use it only for legitimate, authorized OSINT research.
 
