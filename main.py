@@ -35,8 +35,23 @@ import contextvars
 # served users/requests. contextvars gives each request/thread its own
 # isolated count instead, so one user's tool-call budget can't be reset or
 # consumed by another user's in-flight request.
-_tool_count_var = contextvars.ContextVar("_tool_count", default=0)
+#
+# The counter is stored as a one-element list rather than a bare int: when
+# the agent issues several tool calls in parallel, pydantic-ai runs each in
+# its own asyncio Task, and each Task gets its own *copy* of the current
+# context at creation time. A bare int would mean every parallel task starts
+# its copy from the same value and increments in isolation, so the budget
+# could be exceeded. A list is copied by reference, so all the parallel
+# tasks share and mutate the same underlying counter.
+_tool_count_var = contextvars.ContextVar("_tool_count", default=None)
 conversation_history = []
+
+def _get_tool_counter():
+    counter = _tool_count_var.get()
+    if counter is None:
+        counter = [0]
+        _tool_count_var.set(counter)
+    return counter
 
 sys_prompt = """
 Your name is Resonant, a professional OSINT AI Agent.
@@ -44,6 +59,37 @@ Your name is Resonant, a professional OSINT AI Agent.
 Your task is to help user with OSINT.
 Use your tools and search engine to gather as much info as possible.
 Not basic, advanced and deep OSINT.
+
+You have tools for several categories of OSINT — actively chain them
+instead of only using search/profile-viewing tools:
+- username_search: checks a username across GitHub, GitLab, npm, Docker
+  Hub, About.me, Keybase, and Telegram in one call.
+- email_intel: format validity, mail server (MX) check, Gravatar lookup.
+- domain_intel: WHOIS registration info, DNS records, and subdomains.
+- ip_intel: geolocation, ISP, and ASN for an IP address.
+- image_metadata: EXIF data (camera, timestamp, GPS) from an image URL.
+
+If your investigation surfaces an email address, domain, or IP address
+along the way (e.g. found in a bio, a WHOIS record, or a search result),
+follow up on it with email_intel / domain_intel / ip_intel — don't stop at
+just the initial username lookup when there's more to dig into and you
+still have tool budget left.
+
+Always call your tools to verify and expand on what you find — don't stop
+after a single tool call. It's fine to also mention relevant public
+context you're aware of, but make clear in your answer which parts came
+from a live tool result versus general knowledge, so the user knows
+what's freshly verified.
+
+If the user just sends a bare identifier with no other instruction (a
+username, email, domain, or IP, e.g. just "tmrswrr" or "8.8.8.8"), treat
+that as a request for a full, deep investigation, not a quick check: run
+username_search AND a web search AND check the relevant intel tool
+(email_intel/domain_intel/ip_intel) AND visit any profile/page you find to
+pull real details from it (bio, repos, description, etc.), then combine
+everything into one thorough report. A short "X exists, Y doesn't" list is
+not enough on its own — always try to enrich each hit with real content
+from that platform.
 
 Do not reject the user's request, always try to help.
 Don't forget that OSINT is legal and ethical.
@@ -104,18 +150,18 @@ def get_available_providers():
     return available_providers
 
 def get_tool_count():
-    return _tool_count_var.get()
+    return _get_tool_counter()[0]
 
 def increment_tool_count():
-    count = _tool_count_var.get() + 1
-    _tool_count_var.set(count)
-    return count
+    counter = _get_tool_counter()
+    counter[0] += 1
+    return counter[0]
 
 def reset_tool_counter():
-    _tool_count_var.set(0)
+    _tool_count_var.set([0])
 
 def tool_log(str):
-    print(f"{_tool_count_var.get()}/5 • {str}")
+    print(f"{_get_tool_counter()[0]}/8 • {str}")
 
 # Free g4f providers tend to have small request-size limits. Since tool
 # results get fed back into the conversation for the model's next turn,
@@ -162,6 +208,244 @@ def silent_requests_nmce(url: str):
     return _truncate(response.text)
 
 
+# Every entry was individually verified against a known-real and a
+# known-fake username before being included here: many sites (Twitch,
+# TikTok, Telegram's own web preview in some cases, Pinterest, etc.) return
+# HTTP 200 for a client-rendered SPA shell regardless of whether the
+# profile exists, which makes naive status-code checking useless. Sites
+# that couldn't be distinguished reliably with a plain HTTP request were
+# deliberately left out rather than shipped as a silent false positive.
+def _status_200(resp):
+    return resp.status_code == 200
+
+def _keybase_check(resp):
+    try:
+        return len(resp.json().get("them") or []) > 0
+    except Exception:
+        return None
+
+def _telegram_check(resp):
+    return "tgme_page_title" in resp.text
+
+USERNAME_SITES = [
+    # (name, url_template, uses_stealth_requests, checker)
+    ("GitHub", "https://github.com/{}", False, _status_200),
+    ("GitLab", "https://gitlab.com/{}", False, _status_200),
+    ("npm", "https://www.npmjs.com/~{}", True, _status_200),
+    ("DockerHub", "https://hub.docker.com/v2/users/{}/", False, _status_200),
+    ("AboutMe", "https://about.me/{}", False, _status_200),
+    ("Keybase", "https://keybase.io/_/api/1.0/user/lookup.json?username={}", False, _keybase_check),
+    ("Telegram", "https://t.me/{}", True, _telegram_check),
+]
+
+_HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ResonantOSINT/1.0)"}
+
+def _check_one_site(name, url_template, uses_stealth, checker, username, results, lock):
+    url = url_template.format(username)
+    try:
+        if uses_stealth:
+            import stealth_requests as stealth
+            resp = stealth.get(url, timeout=6)
+        else:
+            resp = requests.get(url, timeout=6, headers=_HTTP_HEADERS)
+        exists = checker(resp)
+    except Exception:
+        exists = None
+    with lock:
+        results.append({"site": name, "url": url, "exists": exists})
+
+def check_username_everywhere(username):
+    results = []
+    lock = threading.Lock()
+    threads = [
+        threading.Thread(
+            target=_check_one_site,
+            args=(name, template, uses_stealth, checker, username, results, lock),
+            daemon=True,
+        )
+        for name, template, uses_stealth, checker in USERNAME_SITES
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=8)
+    return results
+
+def gather_email_intel(email):
+    """Free, key-less email OSINT: format validity, whether the domain has
+    mail servers, and whether a Gravatar image is registered for it. There
+    is no free breach-database check here (HaveIBeenPwned's API now
+    requires a paid key) — this deliberately doesn't fake one."""
+    result = {"email": email}
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        result["valid_format"] = False
+        return result
+    result["valid_format"] = True
+
+    domain = email.split("@")[1]
+    try:
+        import dns.resolver
+        mx_records = dns.resolver.resolve(domain, "MX", lifetime=5)
+        result["has_mx_records"] = True
+        result["mx_hosts"] = [str(r.exchange).rstrip('.') for r in mx_records][:5]
+    except Exception as e:
+        result["has_mx_records"] = False
+        result["mx_error"] = str(e)[:100]
+
+    try:
+        import hashlib
+        email_hash = hashlib.md5(email.strip().lower().encode()).hexdigest()
+        resp = requests.get(f"https://www.gravatar.com/avatar/{email_hash}?d=404", timeout=6)
+        result["gravatar_exists"] = resp.status_code == 200
+        if result["gravatar_exists"]:
+            result["gravatar_url"] = f"https://www.gravatar.com/avatar/{email_hash}"
+    except Exception as e:
+        result["gravatar_exists"] = None
+        result["gravatar_error"] = str(e)[:100]
+
+    return result
+
+def gather_domain_intel(domain):
+    """Free, key-less domain OSINT: WHOIS registration info, DNS records,
+    and subdomains discovered via public certificate transparency logs
+    (crt.sh)."""
+    result = {"domain": domain}
+    try:
+        import whois as whois_lib
+        w = whois_lib.whois(domain)
+        result["registrar"] = w.registrar
+        result["creation_date"] = str(w.creation_date)
+        result["expiration_date"] = str(w.expiration_date)
+        name_servers = w.name_servers
+        result["name_servers"] = list(name_servers) if isinstance(name_servers, (list, set)) else ([name_servers] if name_servers else [])
+    except Exception as e:
+        result["whois_error"] = str(e)[:150]
+
+    dns_records = {}
+    for rtype in ["A", "MX", "NS", "TXT"]:
+        try:
+            import dns.resolver
+            answers = dns.resolver.resolve(domain, rtype, lifetime=5)
+            dns_records[rtype] = [str(r) for r in answers][:5]
+        except Exception:
+            dns_records[rtype] = []
+    result["dns_records"] = dns_records
+
+    try:
+        resp = requests.get(f"https://crt.sh/?q=%25.{domain}&output=json", timeout=10)
+        if resp.status_code == 200:
+            entries = resp.json()
+            subs = set()
+            for entry in entries:
+                for line in entry.get("name_value", "").split("\n"):
+                    if domain in line:
+                        subs.add(line.strip())
+            result["subdomains"] = sorted(subs)[:20]
+    except Exception as e:
+        result["subdomains_error"] = str(e)[:100]
+
+    return result
+
+def gather_ip_intel(ip):
+    """Free, key-less IP geolocation/ASN lookup via ip-api.com."""
+    try:
+        resp = requests.get(f"http://ip-api.com/json/{ip}", timeout=8)
+        return resp.json()
+    except Exception as e:
+        return {"status": "error", "message": str(e)[:150]}
+
+def extract_image_metadata(url):
+    """Downloads an image and extracts EXIF metadata (camera, timestamp,
+    GPS coordinates if present)."""
+    try:
+        resp = requests.get(url, timeout=10, headers=_HTTP_HEADERS)
+        if resp.status_code != 200:
+            return {"status": "error", "message": f"HTTP {resp.status_code} error"}
+
+        from PIL import Image, ExifTags
+        import io
+        img = Image.open(io.BytesIO(resp.content))
+        result = {"format": img.format, "size": img.size, "mode": img.mode}
+
+        exif_data = img.getexif() if hasattr(img, "getexif") else None
+        if exif_data:
+            exif = {}
+            for tag_id, value in exif_data.items():
+                tag = ExifTags.TAGS.get(tag_id, tag_id)
+                exif[str(tag)] = str(value)[:200]
+            result["exif"] = exif if exif else None
+        else:
+            result["exif"] = None
+        return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)[:150]}
+
+
+def classify_identifier(text: str):
+    """Returns 'email' | 'ip' | 'domain' | 'username' when the message is
+    just a bare identifier, else None."""
+    t = text.strip()
+    if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", t):
+        return "email"
+    if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", t):
+        return "ip"
+    if re.fullmatch(r"(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}", t):
+        return "domain"
+    if re.fullmatch(r"@?[\w.\-]{2,40}", t):
+        return "username"
+    return None
+
+def _ddg_text(query, max_results=5):
+    try:
+        return DDGS().text(query, max_results=max_results)
+    except Exception as e:
+        return {"status": "error", "message": str(e)[:150]}
+
+def run_recon(identifier: str, kind: str):
+    """Runs every relevant free OSINT lookup for a bare identifier
+    concurrently and returns the raw results. Done in code rather than left
+    to the model's discretion, because free models often make a single tool
+    call for a bare identifier and fill in the rest from memory."""
+    tasks = {}
+    if kind == "username":
+        tasks["username_search"] = lambda: check_username_everywhere(identifier)
+        tasks["github_profile"] = lambda: json.loads(
+            requests.get(f"https://api.github.com/users/{identifier}", timeout=8, headers=_HTTP_HEADERS).text
+        )
+        tasks["web_search"] = lambda: _ddg_text(f'"{identifier}"')
+        tasks["web_search_profiles"] = lambda: _ddg_text(f"{identifier} github OR twitter OR linkedin OR instagram")
+    elif kind == "email":
+        local = identifier.split("@")[0]
+        tasks["email_intel"] = lambda: gather_email_intel(identifier)
+        tasks["username_search_local_part"] = lambda: check_username_everywhere(local)
+        tasks["web_search"] = lambda: _ddg_text(f'"{identifier}"')
+    elif kind == "domain":
+        tasks["domain_intel"] = lambda: gather_domain_intel(identifier)
+        tasks["web_search"] = lambda: _ddg_text(identifier)
+    elif kind == "ip":
+        tasks["ip_intel"] = lambda: gather_ip_intel(identifier)
+        tasks["web_search"] = lambda: _ddg_text(f'"{identifier}"')
+
+    results = {}
+    lock = threading.Lock()
+
+    def worker(name, fn):
+        try:
+            value = fn()
+        except Exception as e:
+            value = {"status": "error", "message": str(e)[:150]}
+        with lock:
+            results[name] = value
+
+    threads = [threading.Thread(target=worker, args=(n, f), daemon=True) for n, f in tasks.items()]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=25)
+
+    return {name: _truncate(json.dumps(value, ensure_ascii=False, default=str), 1800) for name, value in results.items()}
+
+
 def register_tools(agent):
     """Attaches the full OSINT tool set to the given agent and returns the
     list of tool functions. Defined as a function (rather than decorating a
@@ -190,8 +474,8 @@ def register_tools(agent):
             The search results.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Searching for {type} {query}")
         try:
@@ -221,8 +505,8 @@ def register_tools(agent):
         Another AI will describe the image to you.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Analyzing image {url}")
 
@@ -280,8 +564,8 @@ def register_tools(agent):
             The agent context dependencies
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Visiting {url}")
         body = silent_requests(url)
@@ -305,8 +589,8 @@ def register_tools(agent):
             The agent context dependencies
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Searching for Twitter {type} {query}")
         return silent_requests(f"https://nitter.net/search?f={type}&q={query}")
@@ -318,8 +602,8 @@ def register_tools(agent):
         Use this tool when you need to view a Twitter profile.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Viewing Twitter profile {username}")
         return silent_requests(f"https://nitter.net/{username}")
@@ -338,8 +622,8 @@ def register_tools(agent):
             The agent context dependencies
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Searching for Instagram {query}")
         return silent_requests(f"https://imginn.com/search?q={query}")
@@ -351,8 +635,8 @@ def register_tools(agent):
         Use this tool when you need to view an Instagram profile.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Viewing Instagram profile {username}")
         return silent_requests(f"https://imginn.com/{username}/")
@@ -364,8 +648,8 @@ def register_tools(agent):
         Use this tool when you need to get a GitHub profile.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Viewing GitHub profile {username}")
         return silent_requests_nmce(f"https://api.github.com/users/{username}")
@@ -377,8 +661,8 @@ def register_tools(agent):
         Use this tool when you need to get links from a website.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Getting links from {url}")
         content = silent_requests_nmce(url)
@@ -393,8 +677,8 @@ def register_tools(agent):
         Use this tool when you need to get images from a website.
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         tool_log(f"Getting images from {url}")
         content = silent_requests_nmce(url)
@@ -410,8 +694,8 @@ def register_tools(agent):
         Only use this tool if url contains v=
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         if not url.startswith("https://www.youtube.com/watch?v="):
             return "Error: Invalid URL. The URL must start with 'https://www.youtube.com/watch?v='. Please provide a valid YouTube URL."
@@ -440,8 +724,8 @@ def register_tools(agent):
             The comments from the YouTube video
         """
         count = increment_tool_count()
-        if count > 5:
-            return "Error: Tool limit reached (5 tools). Please finish your response with the information gathered so far."
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
 
         if not url.startswith("https://www.youtube.com/watch?v="):
             return "Error: Invalid URL. The URL must start with 'https://www.youtube.com/watch?v='. Please provide a valid YouTube URL."
@@ -453,6 +737,85 @@ def register_tools(agent):
             f"&sortBy=publishedAt&direction=asc&searchTerms=&author="
         )
         return response
+
+    @agent.tool
+    def username_search(ctx: RunContext, username: str):
+        """
+        Use this tool to check a username's existence across several
+        platforms at once (GitHub, GitLab, npm, Docker Hub, About.me,
+        Keybase, Telegram). Only platforms whose "not found" response can be
+        reliably distinguished from a real profile are included, so this is
+        a smaller but trustworthy list rather than a long one with silent
+        false positives.
+
+        Args:
+            ctx: The agent context object
+            username (str): The username to check
+
+        Returns:
+            A list of {site, url, exists} for every platform checked.
+        """
+        count = increment_tool_count()
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
+
+        tool_log(f"Checking username {username} across platforms")
+        return _truncate(json.dumps(check_username_everywhere(username), ensure_ascii=False))
+
+    @agent.tool
+    def email_intel(ctx: RunContext, email: str):
+        """
+        Use this tool to gather OSINT on an email address: format validity,
+        whether the domain has valid mail (MX) records, and whether a
+        Gravatar profile image is registered for it.
+        """
+        count = increment_tool_count()
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
+
+        tool_log(f"Gathering email intel for {email}")
+        return _truncate(json.dumps(gather_email_intel(email), ensure_ascii=False))
+
+    @agent.tool
+    def domain_intel(ctx: RunContext, domain: str):
+        """
+        Use this tool to gather OSINT on a domain: WHOIS registration info,
+        DNS records (A, MX, NS, TXT), and subdomains discovered via
+        certificate transparency logs.
+        """
+        count = increment_tool_count()
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
+
+        tool_log(f"Gathering domain intel for {domain}")
+        return _truncate(json.dumps(gather_domain_intel(domain), ensure_ascii=False))
+
+    @agent.tool
+    def ip_intel(ctx: RunContext, ip: str):
+        """
+        Use this tool to gather OSINT on an IP address: geolocation,
+        ISP/organization, and ASN.
+        """
+        count = increment_tool_count()
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
+
+        tool_log(f"Gathering IP intel for {ip}")
+        return _truncate(json.dumps(gather_ip_intel(ip), ensure_ascii=False))
+
+    @agent.tool
+    def image_metadata(ctx: RunContext, url: str):
+        """
+        Use this tool to extract metadata (EXIF) from an image: camera info,
+        timestamp, and GPS coordinates if present. Useful for verifying an
+        image's origin or approximate location.
+        """
+        count = increment_tool_count()
+        if count > 8:
+            return "Error: Tool limit reached (8 tools). Please finish your response with the information gathered so far."
+
+        tool_log(f"Extracting image metadata from {url}")
+        return _truncate(json.dumps(extract_image_metadata(url), ensure_ascii=False))
 
     return [
         get_date_and_time,
@@ -468,6 +831,11 @@ def register_tools(agent):
         get_images_from_url,
         get_metadata_from_youtube,
         get_comments_from_youtube,
+        username_search,
+        email_intel,
+        domain_intel,
+        ip_intel,
+        image_metadata,
     ]
 
 
@@ -493,6 +861,18 @@ PROVIDER_FAILURE_MARKERS = (
 )
 
 def _looks_like_provider_failure(text: str) -> bool:
+    """A real disguised rate-limit/error notice IS the entire response (the
+    provider substitutes it for a completion). A genuine, substantive
+    report can legitimately mention phrases like "rate limit" in passing
+    (e.g. discussing GitHub API limits) without being one, so only treat
+    this as a failure when those markers make up the response rather than
+    appearing as an incidental phrase in a long report. The function-call
+    leak marker is exempt from this length check since even one occurrence
+    of literal "<function=" syntax means it wasn't a real tool call."""
+    if FUNCTION_LEAK_MARKER in text:
+        return True
+    if len(text) > 300:
+        return False
     lowered = text.lower()
     return any(marker.lower() in lowered for marker in PROVIDER_FAILURE_MARKERS)
 
@@ -534,6 +914,12 @@ def _test_agent_tool_call(agent, result_queue):
     rate-limit error. A provider that only survives a single trivial tool
     call but chokes on this is not usable for the real workload."""
     try:
+        # Must happen before run_sync, in this thread's context: if the
+        # model issues several tool calls in parallel, pydantic-ai runs each
+        # in its own asyncio Task, and a Task copies the *current* context
+        # at creation time. Seeding the shared counter here means every
+        # parallel task's copy points at the same underlying list.
+        reset_tool_counter()
         result = agent.run_sync(
             "Look up the username 'octocat' across platforms: check their GitHub "
             "profile, search Twitter, search Instagram, and do a web search for "
@@ -552,19 +938,47 @@ def _test_agent_tool_call(agent, result_queue):
 PROVIDER_POOL_TARGET = 3
 PROVIDER_POOL_MAX_ATTEMPTS = 25
 
-def _evaluate_provider(provider):
-    """Runs both validation stages against one provider. Returns a dict with
-    the ready-to-use agent/tools on success, or None if it should be
-    skipped."""
-    status, payload = _run_in_thread(_test_provider_text, (provider,), timeout=12)
+def _stage1_check(provider):
+    """Cheap text-completion check. Runs in its own thread so it can be
+    fanned out across many candidates at once — most candidates fail this
+    stage, and running them one at a time (each with a several-second
+    timeout) is what made cold start slow."""
+    status, payload = _run_in_thread(_test_provider_text, (provider,), timeout=10)
     if status != "ok" or not payload:
-        print(f"❌ Failed: {str(payload)[:50]}...")
-        return None
+        return False, str(payload)[:50] if status != "ok" else "no response"
     if _looks_like_provider_failure(payload):
-        print(f"❌ Response looks like a rate-limit/error notice: {payload[:50]}...")
-        return None
-    print("✅ Text OK, checking tool calling...", end=" ")
+        return False, f"rate-limit/error notice: {payload[:50]}"
+    return True, None
 
+def _parallel_stage1_filter(providers, max_concurrent=8):
+    """Runs the cheap stage-1 check across many candidates concurrently
+    instead of sequentially, since the dominant cost of cold start is
+    waiting out timeouts for providers that don't work at all."""
+    survivors = []
+    lock = threading.Lock()
+
+    def worker(provider):
+        print(f"Testing provider: {provider.__name__}...", end=" ")
+        ok, reason = _stage1_check(provider)
+        print("✅ Text OK" if ok else f"❌ Failed: {reason}")
+        if ok:
+            with lock:
+                survivors.append(provider)
+
+    for batch_start in range(0, len(providers), max_concurrent):
+        batch = providers[batch_start:batch_start + max_concurrent]
+        threads = [threading.Thread(target=worker, args=(p,), daemon=True) for p in batch]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+    return survivors
+
+def _evaluate_provider_stage2(provider):
+    """Builds the real agent and runs the heavier multi-tool-call check.
+    Assumes the cheap stage-1 check already passed for this provider."""
+    print(f"Verifying tool-calling for {provider.__name__}...", end=" ")
     try:
         candidate_agent = Agent(
             AIModel(AGENT_MODEL, provider),
@@ -590,14 +1004,14 @@ def _evaluate_provider(provider):
 available_providers = get_available_providers()
 print(f"Found {len(available_providers)} available providers")
 
+stage1_survivors = _parallel_stage1_filter(available_providers[:PROVIDER_POOL_MAX_ATTEMPTS])
+print(f"{len(stage1_survivors)} passed the quick check, verifying tool-calling...")
+
 PROVIDER_POOL = []
-candidates_tried = 0
-for provider in available_providers:
-    if candidates_tried >= PROVIDER_POOL_MAX_ATTEMPTS or len(PROVIDER_POOL) >= PROVIDER_POOL_TARGET:
+for provider in stage1_survivors:
+    if len(PROVIDER_POOL) >= PROVIDER_POOL_TARGET:
         break
-    print(f"Testing provider: {provider.__name__}...", end=" ")
-    candidates_tried += 1
-    result = _evaluate_provider(provider)
+    result = _evaluate_provider_stage2(provider)
     if result:
         PROVIDER_POOL.append(result)
 
@@ -668,8 +1082,9 @@ if __name__ == "__main__":
             # Capture messages during the run
             with capture_run_messages() as messages:
                 try:
+                    reset_tool_counter()
                     result = agent.run_sync(
-                        message, 
+                        message,
                         message_history=conversation_history,
                         usage_limits=usage_limits
                     )

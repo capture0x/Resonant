@@ -28,9 +28,15 @@ Resonant is a self-hosted web application that pairs a tool-using AI agent with 
 * **Integrated OSINT Tools**:
   * DuckDuckGo search (text, images, videos, news)
   * Web crawling & main-content extraction
-  * Social media enumeration (Twitter, Instagram, GitHub)
+  * Username enumeration across GitHub, GitLab, npm, Docker Hub, About.me, Keybase and Telegram (only platforms whose "not found" response can be reliably told apart from a real profile are included, to avoid silent false positives)
+  * Email intelligence: format validation, MX record check, Gravatar lookup
+  * Domain intelligence: WHOIS, DNS records (A/MX/NS/TXT), subdomain discovery via certificate transparency logs
+  * IP intelligence: geolocation, ISP and ASN
+  * Image metadata (EXIF) extraction
+  * Social profile lookups (Twitter, Instagram, GitHub)
   * YouTube metadata & comment retrieval
   * Image analysis via `image_vision`
+* **Automatic Deep Recon**: Send just a username, email, domain or IP address and Resonant runs every relevant lookup in parallel, then writes a report from the real results, instead of relying on the model to pick enough tools on its own.
 * **Reliable Multi-Tool Lookups**: Tool output (page content, search results) is automatically capped and truncated so a lookup chaining several tools together stays within what free AI providers can accept, instead of failing on oversized requests.
 * **Multi-User Ready**: Runs as a threaded server so multiple people can use it concurrently without queuing behind one another; each request's tool-call budget is isolated per request, so concurrent users can't interfere with each other.
 * **User Management**: Registration, authentication, and session handling via Flask-Login, with hashed passwords (Werkzeug).
@@ -73,7 +79,7 @@ Resonant is a self-hosted web application that pairs a tool-using AI agent with 
 | Web framework  | Flask, Flask-Login, Flask-Migrate            |
 | AI agent       | pydantic-ai + g4f (free-tier model access)   |
 | Database       | PostgreSQL, SQLAlchemy                       |
-| Search/tools   | duckduckgo_search, stealth_requests, MainContentExtractor |
+| Search/tools   | duckduckgo_search, stealth_requests, MainContentExtractor, python-whois, dnspython, Pillow |
 | Frontend       | Jinja2 templates                             |
 
 ---

@@ -150,7 +150,7 @@ def create_app(config_name='default'):
         try:
             # Try to import from main
             from main import agent as main_agent
-            from main import all_tools, reset_tool_counter, PROVIDER_POOL, _looks_like_provider_failure
+            from main import all_tools, reset_tool_counter, PROVIDER_POOL, _looks_like_provider_failure, classify_identifier, run_recon
             from pydantic_ai.exceptions import UnexpectedModelBehavior
 
             # Check if agent exists
@@ -169,13 +169,30 @@ def create_app(config_name='default'):
                         ModelResponse(parts=[TextPart(content=msg.content)])
                     )
 
+            # A bare identifier (username/email/domain/IP) gets a guaranteed
+            # baseline investigation done in code, in parallel, instead of
+            # trusting the model to choose enough tools on its own.
+            agent_prompt = user_message
+            kind = classify_identifier(user_message)
+            if kind:
+                identifier = user_message.strip().lstrip('@')
+                recon = run_recon(identifier, kind)
+                agent_prompt = (
+                    f"{user_message}\n\n"
+                    f"[Live OSINT results already gathered automatically for this {kind}. "
+                    f"Write a thorough, well-structured report based on these real results, "
+                    f"and use your tools to dig deeper into anything interesting (profiles, "
+                    f"domains, emails found). Do not invent facts that are not in the "
+                    f"results or from tools.]\n{json.dumps(recon, ensure_ascii=False)}"
+                )
+
             def _try_agent(candidate_agent):
                 # The tool-call counter is a single global shared by every
                 # request; without resetting it here, users would permanently
                 # lose tool access once 5 tool calls had ever been made
                 # across the whole app's lifetime.
                 reset_tool_counter()
-                result = candidate_agent.run_sync(user_message, message_history=history)
+                result = candidate_agent.run_sync(agent_prompt, message_history=history)
                 output = str(result.output)
                 if _looks_like_provider_failure(output):
                     # Either the provider stopped actually executing tool

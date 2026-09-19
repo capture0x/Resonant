@@ -14,3 +14,6 @@ python-dotenv
 Flask-Migrate
 psycopg2-binary
 psycopg2
+python-whois
+Pillow
+dnspython
