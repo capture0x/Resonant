@@ -8,6 +8,7 @@ Resonant is a self-hosted web application that pairs a tool-using AI agent with 
 
 ## Table of Contents
 
+- [Demo](#demo)
 - [Key Features](#key-features)
 - [How It Works](#how-it-works)
 - [Screenshots](#screenshots)
@@ -19,6 +20,16 @@ Resonant is a self-hosted web application that pairs a tool-using AI agent with 
 - [Troubleshooting](#troubleshooting)
 - [Security & Ethical Use](#security--ethical-use)
 - [License](#license)
+
+---
+
+## Demo
+
+Sending just a username is enough: Resonant runs its lookups in parallel and writes a report from the real results.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/demo.gif" alt="Resonant demo: login, send a username, get an OSINT report" style="width:100%;" />
+</p>
 
 ---
 
