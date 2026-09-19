@@ -244,10 +244,11 @@ def create_app(config_name='default'):
         # A bare email address gets a deterministic, structured report built
         # straight from the open-source lookups: nothing in it can be invented
         # by a model, and it doesn't wait for AI-provider discovery.
-        from email_intel import EMAIL_RE, gather_email_intel, format_email_report
-        if EMAIL_RE.match(user_message.strip()):
+        from email_intel import extract_single_email, gather_email_intel, format_email_report
+        target_email = extract_single_email(user_message)
+        if target_email:
             try:
-                return format_email_report(gather_email_intel(user_message.strip(), deep=True))
+                return format_email_report(gather_email_intel(target_email, deep=True))
             except Exception as e:
                 app.logger.warning(f"Email report failed, falling back to the agent: {e}")
 

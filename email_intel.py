@@ -19,6 +19,18 @@ import requests
 _HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ResonantOSINT/1.0)"}
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_EMAIL_FIND_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}")
+
+
+def extract_single_email(text, max_length=300):
+    """Returns the email address if the message is a short request about
+    exactly one address (bare, or with a few words such as "find all
+    accounts"), else None. Longer or multi-address messages go to the
+    agent instead."""
+    if len(text) > max_length:
+        return None
+    found = {m.lower(): m for m in _EMAIL_FIND_RE.findall(text)}
+    return next(iter(found.values())) if len(found) == 1 else None
 
 # Every source below is free and key-less unless noted, was tested against
 # the live service before being added, and reports its own status so a
@@ -350,6 +362,12 @@ def _pivot_usernames(result, max_usernames=3):
         if u["value"] and u["value"].lower() not in [n.lower() for n in names]:
             names.append(u["value"])
     names = names[:max_usernames]
+    verified = set(n.lower() for n in names)
+
+    # The address's own local part is a common OSINT pivot, but nothing ties
+    # it to the address, so it is scanned separately and labelled a guess.
+    local = (result.get("address_analysis") or {}).get("local_part") or ""
+    guess = local if len(local) >= 5 and local.lower() not in verified and re.fullmatch(r"[A-Za-z0-9._-]+", local) else None
     pivots, lock = {}, threading.Lock()
 
     def run(name):
@@ -362,13 +380,17 @@ def _pivot_usernames(result, max_usernames=3):
         with lock:
             pivots[name] = {"profiles": found, "stats": stats}
 
-    threads = [threading.Thread(target=run, args=(n,), daemon=True) for n in names]
+    scan_list = names + ([guess] if guess else [])
+    threads = [threading.Thread(target=run, args=(n,), daemon=True) for n in scan_list]
     for t in threads:
         t.start()
     for t in threads:
         t.join(timeout=40)
+    if guess and guess in pivots:
+        pivots[guess]["guess"] = True
     result["username_pivots"] = pivots
-    result["summary"]["counts"]["same_username_profiles"] = sum(len(p["profiles"]) for p in pivots.values())
+    result["summary"]["counts"]["same_username_profiles"] = sum(
+        len(p["profiles"]) for p in pivots.values() if not p.get("guess"))
 
 
 def _summarize(result):
@@ -484,15 +506,20 @@ def format_email_report(data):
     pivots = data.get("username_pivots") or {}
     for uname, info in pivots.items():
         profs = info.get("profiles") or []
+        guess = info.get("guess")
+        title = (f"Possible Profiles Using `{uname}` (guess from the address itself)" if guess
+                 else f"Public Profiles Using `{uname}`")
         if not profs:
-            out += [f"### Public Profiles Using `{uname}`", "No public profiles found on the sites checked.", ""]
+            out += [f"### {title}", "No public profiles found on the sites checked.", ""]
             continue
         by_cat = {}
         for p in profs:
             by_cat.setdefault(p["category"], []).append(f"[{_md_escape(p['site'])}]({p['url']})")
         checked = info.get("stats", {}).get("checked")
-        out += [f"### Public Profiles Using `{uname}` ({len(profs)} found)",
-                f"_Same handle on other sites; it may belong to different people, so treat each as a lead to verify. Checked {checked} sites._", ""]
+        note = ("_Nothing links this handle to the address except that it is the part before the @. Many of these will be unrelated people; verify each one._"
+                if guess else
+                "_Same handle on other sites; it may belong to different people, so treat each as a lead to verify._")
+        out += [f"### {title} ({len(profs)} found)", f"{note} _Checked {checked} sites._", ""]
         out += [f"- **{cat}**: " + ", ".join(links) for cat, links in sorted(by_cat.items())]
         out.append("")
 
