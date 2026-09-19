@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/7.png" style="width:130%;" />
+<img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/7.png" style="width:130%;" />
 
 # Resonant — OSINT AI Assistant
 
@@ -53,14 +53,14 @@ Resonant is a self-hosted web application that pairs a tool-using AI agent with 
 
 <table style="width:100%; table-layout: fixed;">
   <tr>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/7.png" style="width:100%;" /></td>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/2.png" style="width:100%;" /></td>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/3.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/7.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/2.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/3.png" style="width:100%;" /></td>
   </tr>
   <tr>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/4.png" style="width:100%;" /></td>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/5.png" style="width:100%;" /></td>
-    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/6.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/4.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/5.png" style="width:100%;" /></td>
+    <td><img src="https://raw.githubusercontent.com/capture0x/Resonant/refs/heads/main/screenshots/6.png" style="width:100%;" /></td>
   </tr>
 </table>
 
