@@ -138,6 +138,55 @@
         }
 
         /* Diğer stiller aynı kalacak şekilde kısaltıldı */
+
+        /* Report styling: the CSS reset strips default markdown formatting. */
+        .markdown-content h1, .markdown-content h2 {
+            font-size: 1.5rem; font-weight: 700; color: var(--neon-blue);
+            margin: 0.4rem 0 1rem; padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.35);
+        }
+        .markdown-content h3 {
+            font-size: 1.05rem; font-weight: 700; color: var(--cyber-pink);
+            text-transform: uppercase; letter-spacing: 0.08em;
+            margin: 1.2rem 0 0.4rem;
+        }
+        .markdown-content p { margin: 0.6rem 0; line-height: 1.6; }
+        .markdown-content ul { list-style: none; margin: 0.4rem 0 0.8rem; padding: 0; }
+        .markdown-content li {
+            position: relative; padding: 0.35rem 0 0.35rem 1.4rem; line-height: 1.55;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+        }
+        .markdown-content li::before {
+            content: ">"; position: absolute; left: 0; color: var(--neon-blue); font-weight: 700;
+        }
+        .markdown-content a { color: var(--neon-blue); text-decoration: underline; word-break: break-all; }
+        .markdown-content a:hover { color: var(--cyber-pink); }
+        .markdown-content strong { color: #fff; }
+        .markdown-content code {
+            background: rgba(255, 255, 255, 0.08); padding: 0.1rem 0.4rem; border-radius: 4px;
+            color: #f5d0fe; word-break: break-all;
+        }
+        .markdown-content pre code { display: block; padding: 0.8rem; }
+        .markdown-content table {
+            display: table; table-layout: auto; border-collapse: collapse;
+            width: 100%; margin: 0.8rem 0; font-size: 0.9rem;
+        }
+        .markdown-content th {
+            background: rgba(168, 85, 247, 0.22); color: var(--neon-blue);
+            text-align: left; font-weight: 700; white-space: nowrap;
+        }
+        .markdown-content th, .markdown-content td {
+            border: 1px solid rgba(255, 255, 255, 0.14); padding: 0.5rem 0.75rem; vertical-align: top;
+            min-width: 6ch; overflow-wrap: break-word;
+        }
+        .markdown-content td:has(> strong:only-child), .markdown-content td:nth-child(3) { white-space: nowrap; }
+        .markdown-content tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
+        .markdown-content img {
+            display: inline-block; border-radius: 10px; margin: 0.2rem 0.5rem 0.2rem 0;
+            border: 2px solid var(--cyber-pink); background: #fff;
+        }
+        .markdown-content hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.15); margin: 1.2rem 0; }
+        .markdown-content em { color: rgba(255, 255, 255, 0.55); }
     </style>
 </head>
 <body class="min-h-screen">

@@ -47,6 +47,7 @@ Sending just a username is enough: Resonant runs its lookups in parallel and wri
   * Social profile lookups (Twitter, Instagram, GitHub)
   * YouTube metadata & comment retrieval
   * Image analysis via `image_vision`
+* **Instant Email Reports**: Send just an email address and get a structured report straight from the open-source lookups (summary counts, names, usernames, profile pictures, links, a detailed breach table with source, year, record count and exposed data types, linked GitHub accounts, mail infrastructure) with no AI provider involved, so it is fast and nothing in it can be invented. Follow-up questions go to the agent, which can see the report.
 * **Automatic Deep Recon**: Send just a username, email, domain or IP address and Resonant runs every relevant lookup in parallel, then writes a report from the real results, instead of relying on the model to pick enough tools on its own.
 * **Reliable Multi-Tool Lookups**: Tool output (page content, search results) is automatically capped and truncated so a lookup chaining several tools together stays within what free AI providers can accept, instead of failing on oversized requests.
 * **Multi-User Ready**: Runs as a threaded server so multiple people can use it concurrently without queuing behind one another; each request's tool-call budget is isolated per request, so concurrent users can't interfere with each other.

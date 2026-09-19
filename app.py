@@ -241,6 +241,16 @@ def create_app(config_name='default'):
 
     def get_ai_response(user_message, chat_history):
         """Get AI response with multiple fallback mechanisms"""
+        # A bare email address gets a deterministic, structured report built
+        # straight from the open-source lookups: nothing in it can be invented
+        # by a model, and it doesn't wait for AI-provider discovery.
+        from email_intel import EMAIL_RE, gather_email_intel, format_email_report
+        if EMAIL_RE.match(user_message.strip()):
+            try:
+                return format_email_report(gather_email_intel(user_message.strip()))
+            except Exception as e:
+                app.logger.warning(f"Email report failed, falling back to the agent: {e}")
+
         try:
             # Try to import from main
             from main import agent as main_agent
