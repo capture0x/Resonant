@@ -79,7 +79,7 @@
           <script>
             (function() {
               const el = document.currentScript.previousElementSibling;
-              el.innerHTML = marked.parse(el.dataset.content);
+              el.innerHTML = renderMarkdown(el.dataset.content);
               el.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightElement(block);
                 block.style.whiteSpace = 'pre-wrap';
@@ -136,7 +136,7 @@ function addMessage(content, isUser) {
       <span class="text-sm opacity-70 font-mono">${isUser ? '[USER]' : '[AI CORE]'}</span>
       <span class="timestamp ml-3 text-pink-400/60 text-sm">${timestamp}</span>
     </div>
-    <div class="markdown-content text-base">${isUser ? content : marked.parse(content)}</div>
+    <div class="markdown-content text-base">${isUser ? escapeHtml(content) : renderMarkdown(content)}</div>
   `;
 
   if(!isUser) {

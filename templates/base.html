@@ -5,7 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RESONANT_OSINT v2.3.5 | RESONANT</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="icon" href="data:,">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous"></script>
+    <script>
+      // Attach the CSRF token to every state-changing fetch() request.
+      (function () {
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        const nativeFetch = window.fetch;
+        window.fetch = function (url, opts) {
+          opts = opts || {};
+          const method = (opts.method || 'GET').toUpperCase();
+          if (method !== 'GET' && method !== 'HEAD') {
+            opts.headers = Object.assign({}, opts.headers, { 'X-CSRFToken': token });
+          }
+          return nativeFetch(url, opts);
+        };
+      })();
+      // AI output can echo untrusted web content, so it must be sanitized
+      // before it is inserted as HTML.
+      function renderMarkdown(text) { return DOMPurify.sanitize(marked.parse(text)); }
+      function escapeHtml(text) {
+        const d = document.createElement('div'); d.textContent = text; return d.innerHTML;
+      }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -145,6 +169,15 @@
     </nav>
 
     <main class="container mx-auto px-4 py-8">
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="max-w-md mx-auto mb-6 space-y-2" role="alert">
+            {% for message in messages %}
+            <div class="cyber-border bg-black/70 text-pink-300 font-mono text-sm px-4 py-3 rounded">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </main>
 

@@ -5,6 +5,7 @@
     <div class="bg-black/50 backdrop-blur-lg rounded-xl p-8 cyber-border max-w-md w-full mx-4">
         <h2 class="text-3xl text-center mb-8 terminal-glow">NEW OPERATOR CLEARANCE</h2>
         <form method="POST" action="{{ url_for('register') }}" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div>
                 <label class="block text-pink-300 mb-2 text-sm font-mono">OPERATOR ID</label>
                 <input type="text" name="username" class="cyber-input w-full" required placeholder="Enter cryptonym">

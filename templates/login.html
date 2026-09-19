@@ -7,6 +7,7 @@
     </h2>
 
     <form method="POST" action="{{ url_for('login') }}" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
             <label class="block text-pink-300 mb-2 text-sm font-mono">NEURAL ID</label>
             <input type="text" name="username" class="cyber-input w-full neon-focus" required placeholder=">> ENTER CRYPTONYM">

@@ -4,9 +4,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Values that must never be used as a real signing key. app.py refuses to
+# start in production with one of these and generates a throwaway key in
+# development.
+PLACEHOLDER_SECRETS = {"", "CHANGE_ME", "change-this-to-a-random-secret-value"}
+
+
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME")
+    SECRET_KEY = os.getenv("SECRET_KEY", "")
     SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    # Set SESSION_COOKIE_SECURE=true when serving over HTTPS.
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "").lower() in ("1", "true", "yes")
     PERMANENT_SESSION_LIFETIME = timedelta(days=7)
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -24,10 +33,7 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL",
-        "postgresql://newuser:123456@localhost/operant"
-    )
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
 
     SQLALCHEMY_ENGINE_OPTIONS = {
         **Config.SQLALCHEMY_ENGINE_OPTIONS,

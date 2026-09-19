@@ -51,6 +51,7 @@ Sending just a username is enough: Resonant runs its lookups in parallel and wri
 * **Reliable Multi-Tool Lookups**: Tool output (page content, search results) is automatically capped and truncated so a lookup chaining several tools together stays within what free AI providers can accept, instead of failing on oversized requests.
 * **Multi-User Ready**: Runs as a threaded server so multiple people can use it concurrently without queuing behind one another; each request's tool-call budget is isolated per request, so concurrent users can't interfere with each other.
 * **User Management**: Registration, authentication, and session handling via Flask-Login, with hashed passwords (Werkzeug).
+* **Hardened by Default**: CSRF protection on every form and API call, sanitized rendering of AI output (DOMPurify) to block stored XSS from untrusted web content, login/signup/message rate limiting, input validation, security headers, debug mode off, localhost-only binding, and no default credentials.
 * **Data Persistence**: PostgreSQL backend via SQLAlchemy, with Flask-Migrate available for schema migrations.
 * **Audit Trail**: Rotating file logs of user actions and AI responses.
 * **Environment-Based Config**: Separate development/production settings loaded from a `.env` file.
@@ -122,16 +123,19 @@ sudo -u postgres psql -c "CREATE DATABASE resonant_db OWNER myuser;"
 
 # 5. Configure environment variables
 cp .env.example .env
-# then edit .env and set SECRET_KEY / DATABASE_URL to match step 4
+# then edit .env: set DATABASE_URL to match step 4, and generate a SECRET_KEY:
+python -c "import secrets; print(secrets.token_hex(32))"
 
-# 6. Initialize the database schema
+# 6. Initialize the database schema (never overwrites existing tables)
 python init_db.py
 
 # 7. Run server
 python app.py
 ```
 
-Access the UI at `http://localhost:5000`.
+Access the UI at `http://localhost:5000`. The server listens on `127.0.0.1` by default; set `HOST=0.0.0.0` only if you intend to expose it, and put it behind HTTPS (with `SESSION_COOKIE_SECURE=true`) when you do.
+
+To wipe and recreate the tables, run `python init_db.py --reset` (it asks for confirmation first).
 
 > A standalone CLI mode is also available for quick testing without the web UI: `python main.py`.
 
@@ -144,9 +148,13 @@ Environment variables are loaded from `.env` (see `.env.example`):
 | Variable        | Description                                              |
 |-----------------|------------------------------------------------------------|
 | `FLASK_ENV`     | `development` or `production`                             |
-| `SECRET_KEY`    | Flask session signing key — use a long random value       |
+| `SECRET_KEY`    | Flask session signing key. Required in production; the app refuses to start with a missing or placeholder value |
 | `DATABASE_URL`  | PostgreSQL connection string                               |
 | `REDIS_URL`     | Reserved for future use                                    |
+| `FLASK_DEBUG`   | `true` enables Flask's debugger. Off by default; never enable on a public server |
+| `HOST` / `PORT` | Bind address and port (default `127.0.0.1` / `5000`)       |
+| `SESSION_COOKIE_SECURE` | `true` when served over HTTPS                      |
+| `AI_MESSAGES_PER_HOUR` | Per-user cap on AI messages (default `30`)          |
 | `GITHUB_TOKEN`  | Optional. Raises GitHub API rate limits for email/profile lookups |
 | `HIBP_API_KEY`  | Optional. Enables Have I Been Pwned breach lookups         |
 | `HUNTER_API_KEY`| Optional. Enables Hunter.io email verification             |
