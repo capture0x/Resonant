@@ -751,7 +751,7 @@ def register_tools(agent):
 
         tool_log(f"Gathering email intel for {email}")
         data = {k: v for k, v in gather_email_intel(email).items() if k != "summary"}
-        return _truncate(json.dumps(data, ensure_ascii=False), 3500)
+        return _truncate(json.dumps(data, ensure_ascii=False), 5000)
 
     @agent.tool
     def domain_intel(ctx: RunContext, domain: str):

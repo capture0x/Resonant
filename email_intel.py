@@ -167,10 +167,74 @@ def _src_pgp(email):
 def _src_web_mentions(email):
     """Where the exact address appears on the open web (search engine)."""
     from duckduckgo_search import DDGS
-    hits = DDGS().text(f'"{email}"', max_results=8) or []
+    hits = []
+    for backend in ("api", "html"):          # the first often comes back empty or rate-limited
+        try:
+            hits = DDGS().text(f'"{email}"', max_results=8, backend=backend) or []
+        except Exception:
+            hits = []
+        if hits:
+            break
     items = [{"title": (h.get("title") or "")[:120], "url": h.get("href"), "snippet": (h.get("body") or "")[:180]}
              for h in hits if h.get("href")]
     return ("ok", items) if items else ("not_found", None)
+
+
+def _src_hudsonrock(email):
+    """Whether the address appears in infostealer malware logs (Hudson Rock's
+    free community check). Shown only as an exposure signal."""
+    r = requests.get("https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-email",
+                     params={"email": email}, timeout=15, headers=_HTTP_HEADERS)
+    if r.status_code == 429:
+        return "error", "rate limited"
+    if r.status_code != 200:
+        return "error", f"HTTP {r.status_code}"
+    d = r.json()
+    stealers = d.get("stealers") or []
+    if not stealers:
+        return "not_found", None
+    items = [{"date_compromised": s.get("date_compromised"), "operating_system": s.get("operating_system"),
+              "antiviruses": s.get("antiviruses")} for s in stealers[:5]]
+    return "ok", {"infected_computers": len(stealers), "records": items,
+                  "corporate_services": d.get("total_corporate_services"),
+                  "user_services": d.get("total_user_services")}
+
+
+def _src_github_mentions(email):
+    """Public GitHub issues and pull requests that mention the address."""
+    r = requests.get("https://api.github.com/search/issues", params={"q": f'"{email}"', "per_page": 5},
+                     timeout=12, headers=_gh_headers())
+    if r.status_code in (403, 429):
+        return "error", "GitHub rate limit reached (set GITHUB_TOKEN to raise it)"
+    if r.status_code != 200:
+        return "error", f"HTTP {r.status_code}"
+    d = r.json()
+    items = [{"repo": it["repository_url"].rsplit("/", 2)[-2] + "/" + it["repository_url"].rsplit("/", 1)[-1],
+              "title": (it.get("title") or "")[:100], "url": it.get("html_url"),
+              "created": (it.get("created_at") or "")[:10]} for it in d.get("items", [])]
+    return ("ok", {"total": d.get("total_count", 0), "examples": items}) if d.get("total_count") else ("not_found", None)
+
+
+def _src_libravatar(email):
+    import hashlib
+    h = hashlib.sha256(email.strip().lower().encode()).hexdigest()
+    r = requests.get(f"https://seccdn.libravatar.org/avatar/{h}?d=404&s=128", timeout=8, headers=_HTTP_HEADERS)
+    if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+        return "ok", {"avatar_url": f"https://seccdn.libravatar.org/avatar/{h}?s=128"}
+    return "not_found", None
+
+
+def _src_domain_registration(domain):
+    """WHOIS for organisation domains. Skipped for free mail providers, where
+    the domain says nothing about the person."""
+    import whois as whois_lib
+    w = whois_lib.whois(domain)
+    def first(v):
+        return v[0] if isinstance(v, (list, tuple)) and v else v
+    info = {k: str(first(v)) for k, v in (("registrar", w.registrar), ("organization", getattr(w, "org", None)),
+                                           ("created", w.creation_date), ("expires", w.expiration_date),
+                                           ("country", getattr(w, "country", None))) if first(v)}
+    return ("ok", info) if info else ("not_found", None)
 
 
 def _gh_headers():
@@ -209,7 +273,7 @@ def _src_github(email):
 
     # Accounts that authored commits with this address. GitHub links a commit
     # to an account only when the address is verified on that account.
-    c = requests.get("https://api.github.com/search/commits", params={"q": f"author-email:{email}", "per_page": 10},
+    c = requests.get("https://api.github.com/search/commits", params={"q": f"author-email:{email}", "per_page": 30},
                      timeout=10, headers=_gh_headers())
     repos, names = [], []
     if c.status_code == 200:
@@ -223,8 +287,8 @@ def _src_github(email):
             nm = (it.get("commit", {}).get("author") or {}).get("name")
             if nm:
                 names.append(nm)
-        out["sample_repositories"] = sorted({x for x in repos if x})[:5]
-        out["commit_author_names"] = sorted(set(names))[:5]
+        out["sample_repositories"] = sorted({x for x in repos if x})[:8]
+        out["commit_author_names"] = sorted(set(names))[:8]
 
     for login, how in list(matched.items())[:4]:
         prof = _gh_profile(login)
@@ -282,6 +346,11 @@ def gather_email_intel(email, deep=False):
         "github": lambda: _src_github(email),
         "breaches_xposedornot": lambda: _src_breaches(email),
         "web_mentions": lambda: _src_web_mentions(email),
+        "infostealer_logs": lambda: _src_hudsonrock(email),
+        "github_mentions": lambda: _src_github_mentions(email),
+        "libravatar": lambda: _src_libravatar(email),
+        "domain_registration": lambda: (("skipped", "free mail provider") if domain in _FREE_MAIL_DOMAINS
+                                        else _src_domain_registration(domain)),
         "breaches_hibp": lambda: _src_hibp(email),
         "hunter_verification": lambda: _src_hunter(email),
     }
@@ -330,8 +399,20 @@ def gather_email_intel(email, deep=False):
     result["sources"] = {n: s for n, (s, _) in outcomes.items()}
     result["source_notes"] = {n: d for n, (s, d) in outcomes.items() if s in ("error", "skipped")}
     result["summary"] = _summarize(result)
-    if data_of("web_mentions"):
-        result["web_mentions"] = data_of("web_mentions")
+    for key, src in (("web_mentions", "web_mentions"),
+                     ("infostealer_exposure", "infostealer_logs"), ("github_mentions", "github_mentions"),
+                     ("domain_registration", "domain_registration")):
+        if data_of(src):
+            result[key] = data_of(src)
+    lib = data_of("libravatar")
+    if lib:
+        result.setdefault("identity_signals", {})
+        if isinstance(result["identity_signals"], dict):
+            result["identity_signals"]["libravatar"] = lib
+        else:
+            result["identity_signals"] = {"libravatar": lib}
+    # Names/pictures may have been added after the first summary pass.
+    result["summary"] = _summarize(result)
 
     if deep:
         _pivot_usernames(result)
@@ -428,6 +509,10 @@ def _summarize(result):
     if not gh.get("accounts"):
         for nm in gh.get("commit_author_names") or []:
             add(names, nm, "GitHub commits")
+
+    lib = ident.get("libravatar") or {}
+    if lib:
+        add(pictures, lib.get("avatar_url"), "Libravatar")
 
     items = _merged_breaches(result)
     years = sorted(str(b.get("year")) for b in items if b.get("year"))
@@ -538,6 +623,27 @@ def format_email_report(data):
     pgp = (data.get("identity_signals") or {}).get("pgp") if isinstance(data.get("identity_signals"), dict) else None
     if pgp:
         section("PGP", ["- A public PGP key is published for this address on keys.openpgp.org"])
+
+    hr = data.get("infostealer_exposure")
+    if hr:
+        rows = [f"- {hr['infected_computers']} infected computer(s) linked to this address in infostealer malware logs"]
+        for rec in hr.get("records", []):
+            bits = [f"compromised {rec['date_compromised'][:10]}" if rec.get("date_compromised") else None,
+                    rec.get("operating_system")]
+            rows.append("  - " + ", ".join(b for b in bits if b))
+        if hr.get("corporate_services") or hr.get("user_services"):
+            rows.append(f"- Services seen in those logs: {hr.get('corporate_services') or 0} corporate, {hr.get('user_services') or 0} personal")
+        section("Infostealer Exposure", rows)
+
+    gm = data.get("github_mentions")
+    if gm:
+        rows = [f"- {gm['total']:,} public GitHub issues/pull requests mention this address"]
+        rows += [f"  - [{_md_escape(e['title'] or e['repo'])}]({e['url']}) ({e['repo']}, {e['created']})" for e in gm.get("examples", [])]
+        section("GitHub Mentions", rows)
+
+    dr = data.get("domain_registration")
+    if dr:
+        section("Domain Registration", [f"- {k.replace('_', ' ').capitalize()}: {_md_escape(v)}" for k, v in dr.items()])
 
     dom = data.get("domain_analysis") or {}
     infra = [f"- Domain: `{dom.get('name')}`" + (" (free mail provider)" if dom.get("free_provider") else "")]

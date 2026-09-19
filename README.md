@@ -41,7 +41,7 @@ Sending just a username is enough: Resonant runs its lookups in parallel and wri
   * DuckDuckGo search (text, images, videos, news)
   * Web crawling & main-content extraction
   * Username enumeration across GitHub, GitLab, npm, Docker Hub, About.me, Keybase and Telegram (only platforms whose "not found" response can be reliably told apart from a real profile are included, to avoid silent false positives)
-  * Email intelligence: alias analysis (Gmail dots / `+tags`), mail provider detection from MX, SPF/DMARC, disposable-address check, Gravatar profile (name, verified linked accounts), PGP key lookup, GitHub profile and commit-author matches, and data-breach exposure (XposedOrNot; Have I Been Pwned and Hunter.io when you add API keys). Every source reports its own status, so a failed or skipped source is never mistaken for "nothing found"
+  * Email intelligence: alias analysis (Gmail dots / `+tags`), mail provider detection from MX, SPF/DMARC, disposable-address check, Gravatar profile (name, verified linked accounts), PGP key lookup, GitHub profile and commit-author matches, data-breach exposure (XposedOrNot; Have I Been Pwned and Hunter.io when you add API keys), infostealer-log exposure (Hudson Rock's free check), public GitHub issue/PR mentions, web search mentions, Libravatar, and WHOIS for organisation domains. Every source reports its own status, so a failed or skipped source is never mistaken for "nothing found"
   * Domain intelligence: WHOIS, DNS records (A/MX/NS/TXT), subdomain discovery via certificate transparency logs
   * IP intelligence: geolocation, ISP and ASN
   * Image metadata (EXIF) extraction
