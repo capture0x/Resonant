@@ -160,4 +160,4 @@ You are responsible for using this tool in compliance with the terms of service 
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE) © 2025 `TMRSWRR`.
+Licensed under the [Apache License 2.0](LICENSE) © 2026 `TMRSWRR`.
