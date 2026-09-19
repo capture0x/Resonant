@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col h-screen -mt-16 pt-16 items-center justify-center">
+    <div class="bg-black/50 backdrop-blur-lg rounded-xl p-8 cyber-border max-w-md w-full mx-4">
+        <h2 class="text-3xl text-center mb-8 terminal-glow">NEW OPERATOR CLEARANCE</h2>
+        <form method="POST" action="{{ url_for('register') }}" class="space-y-6">
+            <div>
+                <label class="block text-pink-300 mb-2 text-sm font-mono">OPERATOR ID</label>
+                <input type="text" name="username" class="cyber-input w-full" required placeholder="Enter cryptonym">
+            </div>
+            <div>
+                <label class="block text-pink-300 mb-2 text-sm font-mono">ACCESS PASSPHRASE</label>
+                <input type="password" name="password" class="cyber-input w-full" required placeholder="••••••••">
+            </div>
+            <div>
+                <label class="block text-pink-300 mb-2 text-sm font-mono">CONFIRM PASSPHRASE</label>
+                <input type="password" name="confirm_password" class="cyber-input w-full" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="cyber-btn w-full mt-8">
+                GENERATE CLEARANCE
+            </button>
+        </form>
+        <div class="mt-6 text-center text-pink-300 text-sm font-mono">
+            Existing operator?
+            <a href="{{ url_for('login') }}" class="text-pink-400 hover:text-pink-300 ml-1 underline animate-pulse">
+                INITIATE SESSION
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

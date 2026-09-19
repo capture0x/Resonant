@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RESONANT_OSINT v2.3.5 | RESONANT</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cyber-purple: #a855f7;
+            --cyber-pink: #ff00ff;
+            --neon-blue: #00f3ff;
+            --dark-space: #0a0a0f;
+            --deep-space: #161622;
+            --hologram: linear-gradient(45deg, 
+                transparent 25%,
+                rgba(255,0,255,0.1) 50%,
+                transparent 75%,
+                rgba(0,243,255,0.1) 100%
+            );
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 50%, rgba(255,0,255,0.1) 0%, var(--dark-space) 70%),
+                      linear-gradient(45deg, var(--dark-space) 0%, var(--deep-space) 100%);
+            color: #e0e0ff;
+            font-family: 'JetBrains Mono', monospace;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .cyber-border {
+            border: 2px solid;
+            border-image: linear-gradient(45deg, var(--cyber-pink), var(--neon-blue)) 1;
+            box-shadow: 0 0 25px rgba(255, 0, 255, 0.3);
+        }
+
+        .hologram-effect::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: var(--hologram);
+            animation: hologram 6s infinite linear;
+            transform: rotate(45deg);
+            pointer-events: none;
+        }
+
+        @keyframes hologram {
+            0% { transform: translate(-25%, -25%) rotate(45deg); }
+            100% { transform: translate(25%, 25%) rotate(45deg); }
+        }
+
+        .cyber-btn {
+            background: linear-gradient(145deg, var(--cyber-purple), var(--cyber-pink));
+            border: none;
+            padding: 12px 28px;
+            border-radius: 8px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+        }
+
+        .cyber-btn::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: var(--hologram);
+            animation: hologram 6s infinite linear;
+            opacity: 0.3;
+        }
+
+        .message {
+            max-width: 75%;
+            margin: 15px 0;
+            padding: 18px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            position: relative;
+            transition: transform 0.3s ease;
+            border-left: 4px solid;
+        }
+
+        .user-message {
+            border-color: var(--cyber-pink);
+            background: linear-gradient(45deg, rgba(255,0,255,0.1), rgba(255,0,255,0.05));
+        }
+
+        .ai-message {
+            border-color: var(--neon-blue);
+            background: linear-gradient(-45deg, rgba(0,243,255,0.1), rgba(0,243,255,0.05));
+        }
+
+        .cyber-input {
+            background: rgba(16, 16, 32, 0.9);
+            border: 2px solid var(--cyber-pink);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .cyber-input:focus {
+            box-shadow: 0 0 25px var(--cyber-pink),
+                       inset 0 0 15px rgba(255,0,255,0.2);
+        }
+
+        /* Diğer stiller aynı kalacak şekilde kısaltıldı */
+    </style>
+</head>
+<body class="min-h-screen">
+    <canvas class="particles" id="particles"></canvas>
+
+    <nav class="hologram-effect bg-black/90 backdrop-blur-xl py-4 sticky top-0 z-50">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <div class="cyber-spinner w-6 h-6">
+                    <div class="inner-spinner animate-spin"></div>
+                </div>
+                <a href="{{ url_for('index') }}" class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 animate-pulse">
+                    RESONANT_OSINT v2.3.5
+                </a>
+            </div>
+            <div class="flex items-center space-x-6">
+                {% if current_user.is_authenticated %}
+                    <span class="text-pink-300 text-sm glow">USER: {{ current_user.username }}</span>
+                    <a href="{{ url_for('logout') }}" class="cyber-btn text-sm">
+                        DISCONNECT
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="cyber-btn text-sm">
+                        ACCESS TERMINAL
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- base.html (unchanged except script section) -->
+<script>
+// Parçacık sistemi ve diğer scriptler önceki cevaptaki gibi
+// Add this new function
+function maintainScroll() {
+    const messagesEl = document.getElementById('messages');
+    if(messagesEl) {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+}
+</script>
+</body>
+</html>

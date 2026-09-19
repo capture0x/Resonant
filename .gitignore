@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+venv/
+venv.old/
+.env
+.env.save
+*.env.local
+instance/
+logs/
+migrations/__pycache__/
+*.log
+.DS_Store

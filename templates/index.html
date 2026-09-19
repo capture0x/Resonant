@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if current_user.is_authenticated %}
+    <!-- Chat interface önceki güncellenmiş haliyle aynı -->
+{% else %}
+<div class="max-w-4xl mx-auto mt-16 text-center">
+    <div class="mb-12 hologram-effect cyber-border p-8 rounded-xl">
+        <h1 class="text-4xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 animate-pulse">
+            Resonant v2.3.5
+        </h1>
+        <div class="text-xl opacity-80 mb-8 space-y-2 font-mono">
+            <p>> ADVANCED COGNITIVE ANALYSIS</p>
+            <p>> REAL-TIME THREAT MAPPING</p>
+            <p>> NEURAL NETWORK INTEGRATION</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+        <!-- Kartlar hologram efektli -->
+    </div>
+
+    <div class="space-x-6">
+        <a href="{{ url_for('login') }}" class="cyber-btn pulse">
+            INITIATE LINK
+        </a>
+        <a href="{{ url_for('register') }}" class="cyber-btn pulse">
+            REQUEST ACCESS
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

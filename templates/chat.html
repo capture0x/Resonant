@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  /* Improved Scroll & Layout CSS */
+  #messages {
+    height: calc(100vh - 180px) !important;
+    overflow-y: auto !important;
+    scroll-behavior: smooth;
+    padding-right: 0.5rem;
+    min-height: 300px;
+  }
+
+  .message {
+    max-width: 78%;
+    min-width: 280px;
+    margin: 1.2rem 1.5rem;
+    transform: translateZ(0);
+    break-inside: avoid;
+  }
+
+  .markdown-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .markdown-content pre {
+    max-width: 100%;
+    overflow-x: auto;
+    background: rgba(0,0,0,0.4) !important;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 0.5rem 0;
+  }
+
+  /* Scrollbar Styling */
+  #messages::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+  }
+
+  #messages::-webkit-scrollbar-thumb {
+    background: var(--cyber-pink);
+    border-radius: 4px;
+  }
+
+  @media (max-width: 768px) {
+    #messages {
+      height: calc(100vh - 160px) !important;
+      padding: 0.5rem;
+    }
+    
+    .message {
+      max-width: 92%;
+      margin: 1rem auto;
+    }
+  }
+</style>
+
+<div class="flex flex-col h-[calc(100vh-64px)]">
+  <!-- Message Pane -->
+  <div id="messages" class="flex-1 p-8 space-y-8 bg-black/30 backdrop-blur-lg mx-4 rounded-lg cyber-border">
+    {% for message in chat.messages %}
+    <div class="message {{ 'user-message' if message.is_user else 'ai-message' }}">
+      <div class="flex items-center mb-3">
+        <span class="text-sm opacity-70 font-mono">
+          {{ '[USER]' if message.is_user else '[AI CORE]' }}
+        </span>
+        <span class="timestamp ml-3 text-pink-400/60 text-sm">
+          {{ message.timestamp.strftime('%H:%M:%S') }}
+        </span>
+      </div>
+      <div class="markdown-content text-base">
+        {% if message.is_user %}
+          {{ message.content }}
+        {% else %}
+          <div class="ai-content" data-content="{{ message.content|e }}"></div>
+          <script>
+            (function() {
+              const el = document.currentScript.previousElementSibling;
+              el.innerHTML = marked.parse(el.dataset.content);
+              el.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+                block.style.whiteSpace = 'pre-wrap';
+              });
+              setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+              }, 100);
+            })();
+          </script>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Input Form -->
+  <form id="messageForm" class="flex items-center gap-4 p-6 bg-black/80 backdrop-blur-xl border-t border-cyber-pink/30 mx-4">
+    <textarea id="messageInput"
+              rows="2"
+              class="flex-1 cyber-input text-lg px-6 py-3 border-2 border-cyber-pink/50 hover:border-cyber-pink resize-none"
+              placeholder=">> ENTER NEURAL QUERY (SHIFT+ENTER FOR NEW LINE)"
+              autocomplete="off" spellcheck="false"></textarea>
+    <button type="submit" class="cyber-btn px-8 h-14 text-lg font-bold pulse">
+      EXECUTE
+    </button>
+  </form>
+</div>
+
+<script>
+// Enhanced Chat Functions
+const messagesEl = document.getElementById('messages');
+const form = document.getElementById('messageForm');
+const inp = document.getElementById('messageInput');
+let scrollLock = false;
+
+function maintainScroll(force = false) {
+  if ((!scrollLock || force) && messagesEl) {
+    messagesEl.scrollTo({
+      top: messagesEl.scrollHeight,
+      behavior: 'smooth'
+    });
+    scrollLock = true;
+    setTimeout(() => scrollLock = false, 100);
+  }
+}
+
+function addMessage(content, isUser) {
+  const timestamp = new Date().toLocaleTimeString();
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+  
+  messageDiv.innerHTML = `
+    <div class="flex items-center mb-3">
+      <span class="text-sm opacity-70 font-mono">${isUser ? '[USER]' : '[AI CORE]'}</span>
+      <span class="timestamp ml-3 text-pink-400/60 text-sm">${timestamp}</span>
+    </div>
+    <div class="markdown-content text-base">${isUser ? content : marked.parse(content)}</div>
+  `;
+
+  if(!isUser) {
+    messageDiv.querySelectorAll('pre code').forEach(block => {
+      hljs.highlightElement(block);
+      block.style.whiteSpace = 'pre-wrap';
+    });
+  }
+
+  messagesEl.appendChild(messageDiv);
+  requestAnimationFrame(() => {
+    maintainScroll(true);
+    setTimeout(maintainScroll, 50);
+  });
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = inp.value.trim();
+  if (!text) return;
+
+  // Clear input and add user message
+  inp.value = '';
+  addMessage(text, true);
+
+  // Add typing indicator
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'message ai-message';
+  typingDiv.innerHTML = `
+    <div class="flex items-center mb-3">
+      <span class="text-sm opacity-70 font-mono">[AI CORE]</span>
+      <span class="timestamp ml-3 text-pink-400/60 text-sm">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div class="typing-indicator flex space-x-2">
+      <div class="dot animate-pulse"></div>
+      <div class="dot animate-pulse" style="animation-delay: 0.2s"></div>
+      <div class="dot animate-pulse" style="animation-delay: 0.4s"></div>
+    </div>
+  `;
+  messagesEl.appendChild(typingDiv);
+  maintainScroll();
+
+  try {
+    const response = await fetch(`/chat/{{ chat.id }}/message`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ message: text })
+    });
+    
+    const data = await response.json();
+    typingDiv.remove();
+    
+    if(data.response) {
+      addMessage(data.response, false);
+    } else {
+      addMessage(`SYSTEM ERROR: ${data.error || 'Unknown failure'}`, false);
+    }
+  } catch (error) {
+    typingDiv.remove();
+    addMessage('NETWORK FAILURE: Connection to neural core lost', false);
+  } finally {
+    maintainScroll();
+  }
+});
+
+// Initial Setup
+window.addEventListener('load', () => {
+  maintainScroll(true);
+  inp.focus();
+});
+
+// Textarea Auto-resize
+inp.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = this.scrollHeight + 'px';
+  maintainScroll();
+});
+
+// Window Resize Handler
+window.addEventListener('resize', () => maintainScroll(true));
+</script>
+
+<style>
+/* Typing Animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-pulse {
+  animation: pulse 1.4s infinite;
+}
+
+.typing-indicator .dot {
+  width: 8px;
+  height: 8px;
+  background: var(--cyber-pink);
+  border-radius: 50%;
+}
+</style>
+{% endblock %}

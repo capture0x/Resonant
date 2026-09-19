@@ -1,0 +1,16 @@
+flask
+flask-login
+flask-sqlalchemy
+werkzeug
+g4f==8.5.1
+pydantic-ai-slim[duckduckgo,openai]==1.5.0
+pydantic
+flask_cors
+lxml_html_clean
+stealth_requests
+MainContentExtractor
+duckduckgo_search
+python-dotenv
+Flask-Migrate
+psycopg2-binary
+psycopg2
