@@ -99,6 +99,6 @@ Access the UI at `http://localhost:5000`.
 
 ## License
 
-MIT License © 2025 `TMRSWRR`
+MIT License © 2026 `TMRSWRR`
 
 > **Disclaimer:** Use responsibly and within legal and ethical guidelines. All data is sourced from publicly available channels.
